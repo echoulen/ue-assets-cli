@@ -10,10 +10,16 @@ Works on macOS, Windows, and Linux. Requires Node.js >= 18.
 ## Installation
 
 ```bash
-npm install
+npm install -g ue-assets
 ```
 
-Authentication is via `GITHUB_TOKEN` environment variable (or a `.env` file in the directory you run the CLI from):
+Or use without installing:
+
+```bash
+npx ue-assets install ...
+```
+
+Authentication is via `GITHUB_TOKEN` environment variable (or a `.env` file at the project root):
 
 ```bash
 # .env
@@ -64,12 +70,12 @@ A lock file (`*-lock.json`) is written next to the config file to track installe
 
 ## Commands
 
-### `install`
+### `ue-assets install`
 
 Install all entries from a config file.
 
 ```bash
-node cli.js install [options]
+ue-assets install [options]
 ```
 
 | Option | Default | Description |
@@ -82,21 +88,21 @@ node cli.js install [options]
 
 ```bash
 # Install all plugins
-node cli.js install --config plugins.json --dir Plugins
+ue-assets install --config plugins.json --dir Plugins
 
 # Install all content
-node cli.js install --config content.json --dir Content
+ue-assets install --config content.json --dir Content
 
 # Force reinstall
-node cli.js install --config plugins.json --dir Plugins --clean
+ue-assets install --config plugins.json --dir Plugins --clean
 ```
 
-### `update`
+### `ue-assets update`
 
 Fetch the latest GitHub Release tag for each entry, update the version in the config file, and reinstall.
 
 ```bash
-node cli.js update [name] [options]
+ue-assets update [name] [options]
 ```
 
 | Argument | Description |
@@ -112,10 +118,10 @@ node cli.js update [name] [options]
 
 ```bash
 # Update all plugins to latest
-node cli.js update --config plugins.json --dir Plugins
+ue-assets update --config plugins.json --dir Plugins
 
 # Update one plugin
-node cli.js update MyPlugin --config plugins.json --dir Plugins
+ue-assets update MyPlugin --config plugins.json --dir Plugins
 ```
 
 ---
@@ -139,19 +145,15 @@ The CLI auto-detects the zip structure and extracts accordingly:
   with:
     node-version: '22'
 
-- name: Install CLI deps
-  run: npm install
-  working-directory: scripts/ue-assets   # or wherever this package lives
-
 - name: Install plugins
   env:
     GITHUB_TOKEN: ${{ secrets.PLUGIN_TOKEN }}
-  run: node scripts/ue-assets/cli.js install --config plugins.json --dir Plugins
+  run: npx ue-assets install --config plugins.json --dir Plugins
 
 - name: Install content
   env:
     GITHUB_TOKEN: ${{ secrets.PLUGIN_TOKEN }}
-  run: node scripts/ue-assets/cli.js install --config content.json --dir Content
+  run: npx ue-assets install --config content.json --dir Content
 ```
 
 ---
