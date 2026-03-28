@@ -2,10 +2,13 @@
   "name": "ue-assets",
   "version": "0.1.0",
   "description": "CLI to install Unreal Engine plugins and content from GitHub Releases",
-  "main": "cli.js",
   "bin": {
     "ue-assets": "./cli.js"
   },
+  "files": [
+    "cli.js",
+    "lib/"
+  ],
   "dependencies": {
     "@octokit/rest": "^21",
     "adm-zip": "^0.5",
