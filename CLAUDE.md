@@ -51,6 +51,7 @@ lib/
 
 ```json
 {
+  "dir": "../../Plugins",
   "plugins": {
     "MyPlugin": {
       "repo": "owner/repo",
@@ -61,7 +62,9 @@ lib/
 }
 ```
 
-The `{version}` placeholder in `asset` is substituted at runtime. Lock file is auto-derived: `plugins.json` → `plugins-lock.json`.
+- `dir` (optional): default install directory; CLI `--dir` overrides it; falls back to `Plugins`
+- `--config` defaults to `plugins` and auto-appends `.json` if no extension given
+- The `{version}` placeholder in `asset` is substituted at runtime. Lock file is auto-derived: `plugins.json` → `plugins-lock.json`.
 
 ## Publishing
 

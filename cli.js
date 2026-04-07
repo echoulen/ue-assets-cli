@@ -16,8 +16,8 @@ program
 program
   .command('install')
   .description('Install all assets listed in the config file')
-  .option('--config <file>', 'Path to config JSON (plugins.json or content.json)', 'plugins.json')
-  .option('--dir <directory>', 'Default base install directory', 'Plugins')
+  .option('--config <file>', 'Config name or path (default: plugins → plugins.json)', 'plugins')
+  .option('--dir <directory>', 'Base install directory (overrides config "dir")')
   .option('--clean', 'Remove and reinstall all assets', false)
   .action(async (opts) => {
     try {
@@ -32,8 +32,8 @@ program
   .command('update')
   .description('Update assets to their latest GitHub Release versions')
   .argument('[name]', 'Update only this specific asset')
-  .option('--config <file>', 'Path to config JSON (plugins.json or content.json)', 'plugins.json')
-  .option('--dir <directory>', 'Default base install directory', 'Plugins')
+  .option('--config <file>', 'Config name or path (default: plugins → plugins.json)', 'plugins')
+  .option('--dir <directory>', 'Base install directory (overrides config "dir")')
   .action(async (name, opts) => {
     try {
       await update(name, opts);
