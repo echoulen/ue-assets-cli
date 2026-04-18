@@ -41,7 +41,7 @@ lib/
 5. Write lock file entry
 
 **Data flow for `update`:**
-1. Call `getLatestTag()` per repo to find newest release
+1. Call `getLatestTag()` per repo to find newest release (or `getLatestTagByPrefix()` when the entry sets `tagPrefix`, for repos hosting multiple version lines)
 2. Verify the expected asset name exists in that release
 3. Patch version in config JSON in-place (preserves formatting via string replace)
 4. Call `installOne()` with `clean=true` to force re-extraction
@@ -65,6 +65,7 @@ lib/
 - `dir` (optional): default install directory; CLI `--dir` overrides it; falls back to `Plugins`
 - `--config` defaults to `plugins` and auto-appends `.json` if no extension given
 - The `{version}` placeholder in `asset` is substituted at runtime. Lock file is auto-derived: `plugins.json` → `plugins-lock.json`.
+- Per-entry `tagPrefix` scopes `update` to releases whose `tag_name` starts with the prefix (one repo, multiple version lines).
 
 ## Publishing
 

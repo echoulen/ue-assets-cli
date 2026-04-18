@@ -43,5 +43,21 @@ npx ue-assets update MyPlugin
 
 - `"dir"` (optional): default install directory; CLI `--dir` overrides it; falls back to `Plugins/`
 - `"dest"` per entry overrides the install directory for that specific asset
+- `"tagPrefix"` per entry scopes `update` to releases whose tag starts with the prefix — use when a single repo hosts multiple independent version lines (e.g. `designpacks-v1.0.0`, `alphabrushes-v1.0.0`)
 
 A `*-lock.json` is written alongside the config to skip already-installed versions.
+
+### Multiple version lines in one repo
+
+```json
+{
+  "plugins": {
+    "Brushify_DesignPacks": {
+      "repo": "echoulen/brushify",
+      "tagPrefix": "designpacks-",
+      "version": "designpacks-v1.0.0",
+      "asset": "Brushify_DesignPacks-{version}.zip"
+    }
+  }
+}
+```
