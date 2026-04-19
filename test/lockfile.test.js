@@ -59,3 +59,34 @@ test('writeLock preserves other entries when updating one', () => {
     if (fs.existsSync(lp)) fs.rmSync(lp);
   }
 });
+
+const { lockedMatches } = require('../lib/lockfile');
+
+test('lockedMatches: legacy string lock matches version, no module required', () => {
+  assert.strictEqual(lockedMatches('v1', 'v1', undefined), true);
+  assert.strictEqual(lockedMatches('v1', 'v2', undefined), false);
+});
+
+test('lockedMatches: object lock requires both version and module', () => {
+  const lock = { version: 'v1', module: 'M' };
+  assert.strictEqual(lockedMatches(lock, 'v1', 'M'), true);
+  assert.strictEqual(lockedMatches(lock, 'v1', 'N'), false, 'different module → no match');
+  assert.strictEqual(lockedMatches(lock, 'v2', 'M'), false, 'different version → no match');
+});
+
+test('lockedMatches: module entry against legacy string lock → no match', () => {
+  // Switching from artifact mode to module mode: should re-install
+  assert.strictEqual(lockedMatches('v1', 'v1', 'M'), false);
+});
+
+test('lockedMatches: artifact entry against object lock → match if version matches', () => {
+  // Switching from module mode to artifact mode: object lock with same version is OK
+  // (caller will overwrite the lock entry on success)
+  const lock = { version: 'v1', module: 'M' };
+  assert.strictEqual(lockedMatches(lock, 'v1', undefined), true);
+});
+
+test('lockedMatches: null lock → no match', () => {
+  assert.strictEqual(lockedMatches(null, 'v1', undefined), false);
+  assert.strictEqual(lockedMatches(null, 'v1', 'M'), false);
+});
