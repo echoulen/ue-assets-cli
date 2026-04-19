@@ -5,6 +5,9 @@
   "bin": {
     "ue-assets": "./cli.js"
   },
+  "scripts": {
+    "test": "node --test test/**/*.test.js"
+  },
   "files": [
     "cli.js",
     "lib/"
