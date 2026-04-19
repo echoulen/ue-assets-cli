@@ -75,7 +75,7 @@ A release publishes `manifest.json` as one of its assets. Schema:
 | `source` | `"artifact"`        | `"url"`            | Required. Discriminator. |
 | `asset`  | asset name in same release | —           | Required for `artifact`. |
 | `url`    | —                   | absolute HTTP(S) URL | Required for `url`. |
-| `sha256` | optional            | **required**       | Hex-encoded SHA-256 of the ZIP. Mandatory for `url` mode; GitHub already guarantees artifact integrity. Mismatch always aborts (no extraction). |
+| `sha256` | optional            | **required**       | Lowercase hex-encoded SHA-256 of the ZIP (uppercase tolerated; comparison normalizes case). Mandatory for `url` mode; GitHub already guarantees artifact integrity. Mismatch always aborts (no extraction). |
 
 ## Consumer Config
 
@@ -107,14 +107,23 @@ For each entry with a `module` field:
 
 1. **Fetch manifest.** Use the existing GitHub API path to download the
    `manifest.json` asset from the release identified by `repo` + `version`.
-   Cached in memory per `(repo, version)` within one CLI run.
+   Cached in memory per `(repo, version)` for the lifetime of the Node
+   process. (A `_resetCacheForTest` hook exists for unit tests.)
    - **Not found:** abort with
      `manifest.json not found in {repo}@{version} (module mode requires it)`.
-2. **Validate manifest.**
-   - **Unknown `schemaVersion`:** abort with
-     `manifest schemaVersion {N} not supported by this CLI (max: 1)`.
-   - **`manifest.version` mismatch with requested `version`:** abort with
-     `manifest version mismatch: release {version} contains manifest declaring {manifest.version}` — this is a publisher bug, not a recoverable warning.
+2. **Validate manifest.** All failures are hard aborts (publisher bugs, not
+   recoverable warnings). The CLI checks in this order:
+   - **Not a JSON object:** `manifest of {repo}@{version} is not a JSON object`.
+   - **Missing `schemaVersion`:** `manifest of {repo}@{version} is missing 'schemaVersion'`.
+   - **Unknown `schemaVersion`:** `manifest schemaVersion {N} not supported by this CLI (max: 1)`.
+   - **`manifest.version` mismatch with requested `version`:** `manifest version mismatch: release {version} contains manifest declaring {manifest.version}`.
+   - **Missing `modules`:** `manifest of {repo}@{version} is missing 'modules'`.
+   - **Per-module shape errors** (each module entry validated):
+     - Not an object: `module '{name}' in {repo}@{version} is not an object`.
+     - Unknown `source`: `module '{name}' has unknown source '{value}' (expected 'artifact' or 'url')`.
+     - `source: "artifact"` missing `asset`: `module '{name}' (artifact) is missing 'asset'`.
+     - `source: "url"` missing `url`: `module '{name}' (url) is missing 'url'`.
+     - `source: "url"` missing `sha256`: `module '{name}': sha256 is required for url source`.
 3. **Look up module.** Find `manifest.modules[module]`.
    - **Missing:** abort with
      `module '{name}' not in manifest of {repo}@{version}; available: a, b, c`.
@@ -188,6 +197,13 @@ The CLI selects mode by field presence:
 Existing `plugins.json` configs continue to work unchanged. Lock files written
 in the legacy bare-string-version format remain readable; the lockfile reader
 normalizes both shapes.
+
+**Mode switching.** When a consumer flips an entry from `asset` to `module` (or
+back), the existing lock entry will not match the new shape — the skip predicate
+requires `module` equality for module-mode entries, and a bare-string lock can
+never satisfy that. The CLI therefore reinstalls on the first run after the
+switch, which is the correct behavior. Users do not need to manually delete the
+lock entry.
 
 > **Note on issue #3.** The previously proposed direct-URL config mode is
 > dropped. Direct HTTP(S) downloads now happen exclusively as an internal
@@ -290,6 +306,11 @@ Changes to `lib/update.js`:
   latest tag, update `version` in config, re-install. The new release's
   manifest is re-fetched. Missing-module on the new release rolls back the
   config version, consistent with existing artifact-mode rollback.
+- A module's `source` may legitimately differ between releases (e.g. a
+  publisher promotes a small artifact-mode pack to a `url`-mode R2 blob in a
+  later version). The consumer config never encodes `source`, so this is
+  transparent — `update` simply re-resolves the module against the new
+  manifest and downloads from whichever source it now points at.
 
 ## Open Questions
 
