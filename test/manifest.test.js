@@ -71,3 +71,43 @@ test('resolveModule throws with available list when missing', () => {
     /module 'C' not in manifest of o\/r@v1\.0\.0; available: A, B/,
   );
 });
+
+const { fetchManifest, _resetCacheForTest } = require('../lib/manifest');
+
+test('fetchManifest validates and caches per (repo, version)', async () => {
+  _resetCacheForTest();
+  let calls = 0;
+  const fetcher = async (repo, version) => {
+    calls++;
+    return JSON.stringify({
+      schemaVersion: 1,
+      version,
+      modules: { A: { source: 'artifact', asset: `A-${version}.zip` } },
+    });
+  };
+  const a = await fetchManifest('o/r', 'v1', { fetcher });
+  const b = await fetchManifest('o/r', 'v1', { fetcher });
+  const c = await fetchManifest('o/r', 'v2', { fetcher });
+  assert.strictEqual(a, b, 'same instance returned from cache');
+  assert.notStrictEqual(a, c, 'different version is a separate cache entry');
+  assert.strictEqual(calls, 2, 'one network call per (repo, version)');
+});
+
+test('fetchManifest surfaces validation errors', async () => {
+  _resetCacheForTest();
+  const fetcher = async () =>
+    JSON.stringify({ schemaVersion: 99, version: 'v1', modules: {} });
+  await assert.rejects(
+    () => fetchManifest('o/r', 'v1', { fetcher }),
+    /schemaVersion 99/,
+  );
+});
+
+test('fetchManifest rejects malformed JSON', async () => {
+  _resetCacheForTest();
+  const fetcher = async () => 'not json';
+  await assert.rejects(
+    () => fetchManifest('o/r', 'v1', { fetcher }),
+    /manifest of o\/r@v1 is not valid JSON/,
+  );
+});
