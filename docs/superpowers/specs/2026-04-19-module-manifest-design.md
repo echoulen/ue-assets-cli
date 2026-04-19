@@ -1,7 +1,7 @@
 # Module Manifest Design
 
 **Date:** 2026-04-19
-**Status:** Draft
+**Status:** Draft (v2)
 **Related issues:** #3, #4
 
 ## Motivation
@@ -43,6 +43,7 @@ A release publishes `manifest.json` as one of its assets. Schema:
 
 ```json
 {
+  "schemaVersion": 1,
   "version": "v1.0.0",
   "modules": {
     "AlphaBrushes": {
@@ -58,10 +59,13 @@ A release publishes `manifest.json` as one of its assets. Schema:
 }
 ```
 
-### Fields
+### Top-Level Fields
 
+- `schemaVersion` — integer. Currently `1`. CLI rejects unknown values with a
+  clear "manifest schema version N not supported by this CLI" error so older
+  installs fail fast rather than silently misbehave.
 - `version` — the release tag this manifest belongs to. Must match the tag the
-  manifest is attached to. Used for sanity check at install time.
+  manifest is attached to. Mismatch is a hard fail (see Install Flow).
 - `modules` — object keyed by module name (user-visible identifier).
 
 ### Module Entry Fields
@@ -71,7 +75,7 @@ A release publishes `manifest.json` as one of its assets. Schema:
 | `source` | `"artifact"`        | `"url"`            | Required. Discriminator. |
 | `asset`  | asset name in same release | —           | Required for `artifact`. |
 | `url`    | —                   | absolute HTTP(S) URL | Required for `url`. |
-| `sha256` | optional            | **required**       | Hex-encoded SHA-256 of the ZIP. Mandatory for `url` mode; GitHub already guarantees artifact integrity. |
+| `sha256` | optional            | **required**       | Hex-encoded SHA-256 of the ZIP. Mandatory for `url` mode; GitHub already guarantees artifact integrity. Mismatch always aborts (no extraction). |
 
 ## Consumer Config
 
@@ -101,26 +105,35 @@ the parsed result within a single CLI invocation.
 
 For each entry with a `module` field:
 
-1. **Fetch manifest.** Use existing GitHub API path to download the
+1. **Fetch manifest.** Use the existing GitHub API path to download the
    `manifest.json` asset from the release identified by `repo` + `version`.
    Cached in memory per `(repo, version)` within one CLI run.
-2. **Sanity check.** Verify `manifest.version` matches the requested
-   `version`. Warn (not fail) on mismatch.
-3. **Look up module.** Find `manifest.modules[module]`. Fail with a clear
-   "module not found, available: …" message if missing.
+   - **Not found:** abort with
+     `manifest.json not found in {repo}@{version} (module mode requires it)`.
+2. **Validate manifest.**
+   - **Unknown `schemaVersion`:** abort with
+     `manifest schemaVersion {N} not supported by this CLI (max: 1)`.
+   - **`manifest.version` mismatch with requested `version`:** abort with
+     `manifest version mismatch: release {version} contains manifest declaring {manifest.version}` — this is a publisher bug, not a recoverable warning.
+3. **Look up module.** Find `manifest.modules[module]`.
+   - **Missing:** abort with
+     `module '{name}' not in manifest of {repo}@{version}; available: a, b, c`.
 4. **Download by source:**
    - `source: "artifact"` — download named asset via GitHub API (existing
      `downloadAsset()` path).
    - `source: "url"` — HTTP GET with optional `Authorization: Bearer
-     $R2_TOKEN` header if the env var is set. Stream to temp file with progress
-     bar (existing UI).
+     $HTTP_AUTH_TOKEN` header if the env var is set. Stream to temp file with
+     progress bar (existing UI).
 5. **Verify sha256.**
    - `url` mode: mandatory. Compute sha256 of the downloaded file, compare to
      manifest value. Abort on mismatch (do not extract).
-   - `artifact` mode: if `sha256` is present, verify; otherwise skip.
+   - `artifact` mode: if `sha256` is present, verify and abort on mismatch;
+     otherwise skip.
 6. **Extract.** Pass to existing `extractZip()`. Auto-detect structure
    (`Plugins/name/*`, `name/*`, flat).
-7. **Record lock.** Write `{ version, module, sha256 }` to the lock file.
+7. **Record lock.** Write `{ version, module, sha256? }` to the lock file.
+   `sha256` is recorded when known (always for `url`, conditionally for
+   `artifact`) for traceability — not used by skip logic.
 
 ## Environment Variables
 
@@ -131,12 +144,13 @@ Existing convention preserved:
 
 New:
 
-- `R2_TOKEN` — when set, attached as `Authorization: Bearer $R2_TOKEN` for
-  all `url` mode downloads. When unset, URL requests go without
-  authentication. No fallback to GitHub token for URL downloads.
+- `HTTP_AUTH_TOKEN` — when set, attached as `Authorization: Bearer
+  $HTTP_AUTH_TOKEN` for all `url` mode downloads. When unset, URL requests go
+  without authentication. No fallback to GitHub token for URL downloads.
 
 No `authEnv` field in config or manifest — the env var name is fixed by
-convention and loaded from `.env` by the existing dotenv setup.
+convention and loaded from `.env` by the existing dotenv setup. Single-token
+scope is acknowledged; multi-bucket / per-host token routing is a Non-Goal.
 
 ## Lock File
 
@@ -154,38 +168,58 @@ Extended entry shape:
 
 Skip install when:
 
-- Lock entry exists with same `version` and `module`, and
-- Destination directory exists on disk, and
-- For `url` mode entries, lock's `sha256` matches manifest's current `sha256`
-  (detects publisher-side blob replacement).
+- Lock entry exists with same `version` and `module`, **and**
+- Destination directory exists on disk.
+
+Recorded `sha256` is informational only; the skip decision does not re-fetch
+the manifest to detect publisher-side blob mutation. Versioned releases are
+contractually immutable; if a publisher silently replaces a blob under the same
+version, the consumer can force a refresh with `--clean`.
 
 `--clean` bypasses all lock checks.
 
 ## Backward Compatibility
 
-No changes to existing `asset` and `url` config modes. The CLI selects mode by
-field presence:
+The CLI selects mode by field presence:
 
 1. `module` present → manifest-resolver mode (new).
-2. `url` present → direct HTTP mode (per issue #3, not yet implemented).
-3. `asset` present → GitHub artifact mode (current).
+2. `asset` present → GitHub artifact mode (current).
 
-Existing `plugins.json` configs continue to work unchanged.
+Existing `plugins.json` configs continue to work unchanged. Lock files written
+in the legacy bare-string-version format remain readable; the lockfile reader
+normalizes both shapes.
+
+> **Note on issue #3.** The previously proposed direct-URL config mode is
+> dropped. Direct HTTP(S) downloads now happen exclusively as an internal
+> consequence of `source: "url"` entries inside a manifest, so consumers never
+> embed URLs or sha256s in their own config. This eliminates the manual sha256
+> bookkeeping that motivated the rethink.
 
 ## Non-Goals
 
 The following are explicitly out of scope for this design:
 
+- **Direct-URL consumer config (issue #3).** Superseded — see Backward Compat.
 - **Multi-chunk modules.** One module = one ZIP. Resilience via chunk-level
   retry is deferred. If large modules prove problematic, revisit.
 - **Presigned URLs / S3 signing.** URL mode assumes simple Bearer token auth
   or unauthenticated HTTPS. No AWS Signature V4 or presigned URL generation.
+- **Multi-bucket / per-host token routing.** Single global `HTTP_AUTH_TOKEN`.
+  If multiple URL-mode hosts need different credentials in the same install,
+  revisit then.
 - **Auto-discovery of latest version.** `update` command semantics unchanged:
-  resolve latest release tag via GitHub API, then re-install.
+  resolve latest release tag via GitHub API, then re-install. For
+  `module`-mode entries, the new release's manifest is re-fetched.
+  - If the new release lacks the requested module, abort with the same
+    "module not in manifest" error from Install Flow step 3, after rolling
+    back the config version (mirroring existing `installOne` rollback).
 - **Parallel downloads.** Entries install sequentially in current
   implementation. Parallelism is a separate optimization.
 - **Custom manifest asset name.** The manifest is always named
   `manifest.json`. If future flexibility is needed, add a config field then.
+- **Publisher-side manifest tooling.** No `ue-assets manifest gen` subcommand
+  in this CLI — publishers use shell scripts (see Author-Side Workflow). May
+  be revisited as a separate, opt-in helper if friction proves real.
 
 ## Author-Side Workflow (Informative)
 
@@ -205,6 +239,7 @@ SHA_MESHES=$(shasum -a 256 Meshes-v1.0.0.zip | awk '{print $1}')
 # 4. Generate manifest.json
 cat > manifest.json <<EOF
 {
+  "schemaVersion": 1,
   "version": "v1.0.0",
   "modules": {
     "AlphaBrushes": {
@@ -233,13 +268,15 @@ The author may script this (outside ue-assets CLI scope).
 
 New modules under `lib/`:
 
-- `lib/manifest.js` — `fetchManifest(repo, version)`, `resolveModule(manifest, name)`, schema validation.
-- `lib/http.js` — generic `downloadUrl(url, destPath, { authHeader })` used by both this design and issue #3.
+- `lib/manifest.js` — `fetchManifest(repo, version)`,
+  `resolveModule(manifest, name)`, schema/version validation.
+- `lib/http.js` — generic `downloadUrl(url, destPath, { authHeader })`. Used
+  internally for `source: "url"` modules; not exposed via consumer config.
 - `lib/sha256.js` — `verifySha256(filePath, expected)`.
 
 Changes to `lib/install.js`:
 
-- Branch on entry field: `module` / `url` / `asset`.
+- Branch on entry field: `module` (new) vs `asset` (existing).
 - Cache manifest per `(repo, version)` within a single `install()` call.
 
 Changes to `lib/lockfile.js`:
@@ -250,8 +287,9 @@ Changes to `lib/lockfile.js`:
 Changes to `lib/update.js`:
 
 - For `module` mode entries, update behavior mirrors artifact mode: resolve
-  latest tag, update `version` in config, re-install. Manifest will be
-  re-fetched from the new release.
+  latest tag, update `version` in config, re-install. The new release's
+  manifest is re-fetched. Missing-module on the new release rolls back the
+  config version, consistent with existing artifact-mode rollback.
 
 ## Open Questions
 
@@ -259,8 +297,9 @@ None at time of writing.
 
 ## References
 
-- Issue #3 — generic HTTP(S) source + sha256 + authEnv (superseded; HTTP
-  download primitive is now part of this spec).
+- Issue #3 — generic HTTP(S) source + sha256 + authEnv (superseded; URL
+  download is now an internal consequence of manifest `source: "url"` entries,
+  not a consumer-facing config mode).
 - Issue #4 — chunked manifest (superseded by this design's simpler
   one-module-one-ZIP rule).
 - Cloudflare R2 pricing — https://developers.cloudflare.com/r2/pricing/
