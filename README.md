@@ -2,8 +2,12 @@
 
 Install Unreal Engine plugins and content from GitHub Releases.
 
-Requires Node.js >= 18 and a `GITHUB_TOKEN` with `contents:read` scope. For
-manifest entries whose `source` is `url` and points to a private bucket, set
+Requires Node.js >= 18. For private repos it needs a GitHub token with
+`contents:read` scope: either `GITHUB_TOKEN` in the environment (or `.env`), or
+a logged-in `gh` CLI — if `GITHUB_TOKEN` is unset, the token from
+`gh auth token` is used automatically. Public repos work without either.
+
+For manifest entries whose `source` is `url` and points to a private bucket, set
 `HTTP_AUTH_TOKEN` — sent as `Authorization: Bearer <token>`.
 
 ## Usage

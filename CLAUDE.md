@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 `ue-assets` is a Node.js CLI tool (published to npm as `ue-assets`) that installs and updates Unreal Engine plugins/content from GitHub Releases. It reads a JSON config, compares against a lock file, downloads ZIP releases via the GitHub API, and extracts them into a target directory.
 
-Requires `GITHUB_TOKEN` in `.env` (or environment) with `contents:read` scope.
+Requires a GitHub token with `contents:read` scope for private repos: `GITHUB_TOKEN` in `.env` (or environment), else `resolveToken()` in `lib/github.js` falls back to `gh auth token`. The resolved token is never written back to the environment.
 
 `HTTP_AUTH_TOKEN` is read from `.env` and sent as `Authorization: Bearer <token>` for `source: "url"` modules in manifests; unset for public buckets.
 
